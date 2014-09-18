@@ -209,15 +209,41 @@ function startdelay_civicrm_alterPaymentProcessorParams( $paymentObj,
       $settings = json_decode(file_get_contents($settings_file), true);
     }
 
-    $membership_type_id = $rawParams['selectMembership'];
+    $membership_type_id = (int)$rawParams['selectMembership'];
+    $contact_id = (int)$rawParams['contactID'];
 
     if(array_key_exists($membership_type_id, $settings) and (int)$settings[$membership_type_id] > 0) {
 
-      // do payment delay based on membership-type(-id) 
-      $date = date_create();
-      $date->add(new DateInterval('P'.$settings[$membership_type_id].'D'));
-      $cookedParams['receive_date'] = $date->format('Y-m-d');
+      $daysElapsedSinceFirstMembershipRecurrentPaymentProfile = CRM_Core_DAO::singleValueQuery("
+        SELECT
+          DATEDIFF(NOW(), b.start_date)
+        FROM
+          civicrm_membership a
+        INNER JOIN
+          civicrm_contribution_recur b
+          ON a.contribution_recur_id = b.id
+        WHERE
+          a.contact_id = ".$contact_id."
+          AND a.membership_type_id = ".$membership_type_id."
+        ORDER BY
+          b.start_date ASC
+        LIMIT
+          1
+        ");
+
+      if($settings[$membership_type_id] - $daysElapsedSinceFirstMembershipRecurrentPaymentProfile > 0) {
+
+        $start_delay = $settings[$membership_type_id] - $daysElapsedSinceFirstMembershipRecurrentPaymentProfile;
+
+        // do payment delay based on membership-type(-id) 
+        $date = date_create();
+        $date->add(new DateInterval('P'.$start_delay.'D'));
+        $cookedParams['receive_date'] = $date->format('Y-m-d');
+      }
+
     }
 
     return;
 }
+
+?>
